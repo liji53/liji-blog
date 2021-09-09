@@ -1,5 +1,5 @@
 ---
-title: deployMonitor
+title: 数据监控(influxDb+grafana)
 date: 2021-07-30 03:02:02
 tags:
 ---
