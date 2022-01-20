@@ -1,0 +1,16 @@
+@startuml
+web->web: is_cookie
+web -> server : get_cookie(random id)
+loop true
+web->server: keeplive
+end
+web->server: if edited and is not lock:\n getLock
+server->filelock: lock file
+loop true
+server->server: if not keeplive >= 3:\n releaseLock
+end
+web->server: if read only or switch file:\n releaseLock
+server->filelock: release filelock
+web->server: if webPage longtime not change:\n releaseLock
+server->filelock: release filelock
+@enduml
