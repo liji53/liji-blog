@@ -2,6 +2,7 @@
 title: oracle数据迁移
 date: 2021-09-02 06:31:01
 tags:
+categories: python杂项
 ---
 
 # 数据迁移总结(oracle)

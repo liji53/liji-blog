@@ -2,6 +2,7 @@
 title: pytest测试报告自定义比较内容
 date: 2021-09-09 08:48:22
 tags:
+categories: python杂项
 ---
 
 # pytest-html自定义比较内容

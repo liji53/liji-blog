@@ -2,6 +2,7 @@
 title: 探索difflib(初探匹配算法)
 date: 2021-09-10 08:04:57
 tags:
+categories: python杂项
 ---
 
 # 让difflib展示更智能
