@@ -96,7 +96,7 @@ R_X86_64_PC32 通过相对寻址修正
 最后把自己绘制的流程图献上
 ![](Images\ld_flow.png)
 
-### 实验：c++虚表的位置
+### 实验：c++虚表的内存布局
 利用上面学的知识，我们现学现用，看下c++虚表
 比方，有下面源文件：
 ```c++
@@ -119,7 +119,7 @@ int main(){
 }
 ```
 ##### 符号表找函数地址
-通过符号表，我们看下2个类相关的虚拟地址
+通过符号表，我们看下相关的地址
 ```shell
 51: 000000000040074a    37 FUNC    WEAK   DEFAULT   14 _ZN8t_deriveC2Ev
 58: 0000000000400870    24 OBJECT  WEAK   DEFAULT   16 _ZTI8t_derive
@@ -152,7 +152,6 @@ typeinfo name for t_derive
      00000000000000a0  0000000000000000   A       0     0     32
 [26] .bss              NOBITS           0000000000601040  0000102c
      00000000000000c0  0000000000000000  WA       0     0     32
-
 ```
 通过查看section header table，可以知道.rodata 的起始虚拟地址是0x400800，同时在可执行文件中的偏移位置是0x800，下面我们就从文件的.rodata段中找下有没有虚表
 通过命令 readelf -x .rodata [目标文件]，也可以通过hexdump 来查看
@@ -161,39 +160,46 @@ typeinfo name for t_derive
 也可以看到在linux上typeinfo位于虚表的第二项（看前面符号表_ZTI8t_derive的地址正是第二项）
 而且还能看出typeinfo的内存布局(除了第一项指向了bss段不知道以外，后面分别指向类名，父类的typeinfo地址)
 
-##### 汇编代码
-最后看下汇编代码是如何实现多态的
+##### 反汇编验证
+最后看下通过汇编c++是如何实现多态的
 ```x86asm
 ......
-  400664:	e8 e1 00 00 00       	call   40074a <_ZN8t_deriveC1Ev>    ; t_derive构造
-  400669:	48 89 5d e8          	mov    QWORD PTR [rbp-0x18],rbx    
-  40066d:	48 8b 45 e8          	mov    rax,QWORD PTR [rbp-0x18]     ; 虚表指针
-  400671:	48 8b 00             	mov    rax,QWORD PTR [rax]          ; 虚函数表入口
-  400674:	48 8b 00             	mov    rax,QWORD PTR [rax]          ; 函数指针
-  400677:	48 8b 55 e8          	mov    rdx,QWORD PTR [rbp-0x18]     
-  40067b:	48 89 d7             	mov    rdi,rdx
-  40067e:	ff d0                	call   rax                          ; 调用f_call()
-  400680:	48 8b 45 e8          	mov    rax,QWORD PTR [rbp-0x18]
-  400684:	48 8b 00             	mov    rax,QWORD PTR [rax]
-  400687:	48 83 c0 08          	add    rax,0x8                      ; 虚函数表的第二项
-  40068b:	48 8b 00             	mov    rax,QWORD PTR [rax]
-  40068e:	48 8b 55 e8          	mov    rdx,QWORD PTR [rbp-0x18]
-  400692:	48 89 d7             	mov    rdi,rdx
-  400695:	ff d0                	call   rax                          ; 调用f_show()
+  400646: mov    edi,0x10                     ; 给new传参
+  40064b: call   400530 <_Znwm@plt>           ; 调用 operator new
+  400650:	mov    rbx,rax                      ; new的返回值赋值给rbx
+  400653:	mov    QWORD PTR [rbx],0x0          ; 给虚函数指针赋值0，构造时才初始化
+  40065a:	mov    DWORD PTR [rbx+0x8],0x0      ; 给成员变量a赋值0
+  400661:	mov    rdi,rbx                      ; 给t_derive构造函数传参
+  400664:	call   40074a <_ZN8t_deriveC1Ev>    ; 调用t_derive构造函数
+  400669:	mov    QWORD PTR [rbp-0x18],rbx     ; 对象地址(也是虚表的地址)放入栈中
+  40066d:	mov    rax,QWORD PTR [rbp-0x18]     ; rax指向对象的首地址
+  400671:	mov    rax,QWORD PTR [rax]          ; rax指向虚函数表
+  400674:	mov    rax,QWORD PTR [rax]          ; rax指向虚函数
+  400677:	mov    rdx,QWORD PTR [rbp-0x18]     ; 
+  40067b:	mov    rdi,rdx                      ; 传参this
+  40067e:	call   rax                          ; 调用f_call()
+  400680:	mov    rax,QWORD PTR [rbp-0x18]     ; rax指向对象的首地址
+  400684:	mov    rax,QWORD PTR [rax]          ; rax指向虚函数表
+  400687:	add    rax,0x8                      ; 虚函数表的第二项
+  40068b:	mov    rax,QWORD PTR [rax]          ; rax指向虚函数
+  40068e:	mov    rdx,QWORD PTR [rbp-0x18]
+  400692:	mov    rdi,rdx                      ; 传参this
+  400695:	call   rax                          ; 调用f_show()
 ......
-
 000000000040074a <_ZN8t_deriveC1Ev>:
-  40074a:	55                   	push   rbp
-  40074b:	48 89 e5             	mov    rbp,rsp
-  40074e:	48 83 ec 10          	sub    rsp,0x10
-  400752:	48 89 7d f8          	mov    QWORD PTR [rbp-0x8],rdi
-  400756:	48 8b 45 f8          	mov    rax,QWORD PTR [rbp-0x8]
-  40075a:	48 89 c7             	mov    rdi,rax
-  40075d:	e8 d2 ff ff ff       	call   400734 <_ZN6t_baseC1Ev>
-  400762:	48 8b 45 f8          	mov    rax,QWORD PTR [rbp-0x8]      ; 设置虚表指针
-  400766:	48 c7 00 30 08 40 00 	mov    QWORD PTR [rax],0x400830     ; 虚函数表入口
+  ...
+  400752:	mov    QWORD PTR [rbp-0x8],rdi      ; 参数，即this指针
+  400756:	mov    rax,QWORD PTR [rbp-0x8]      ; 对象地址赋值给rax
+  40075a:	mov    rdi,rax                      ; 父类构造传参数
+  40075d:	call   400734 <_ZN6t_baseC1Ev>      ; 调用父类的构造函数
+  400762:	mov    rax,QWORD PTR [rbp-0x8]      ; 
+  400766:	mov    QWORD PTR [rax],0x400830     ; 关键：给虚函数指针赋值，
+                                              ; 这里的0x400830正是我们之前看到的地址
+  ...
 ```
-可以得出结论：虚函数指针指向的是对应类的虚函数表第一项
+写的注释已经够详细了，直接下结论：
+1.虚函数指针指向的是对应类的虚函数表第一项
+2.虚函数指针由构造函数初始化
 
 ### 命令&参考资料
 ##### 用到的命令
