@@ -158,9 +158,10 @@ swtch(&c->context, &p->context);
 3. 每隔1秒重置一次进程优先级
 
 ### 参考资料
-书籍：《Operating Systems: Three Easy Pieces》
-也可以看线上书籍：     [线上书籍](https://pages.cs.wisc.edu/~remzi/OSTEP/)
-xv6代码：https://github.com/mit-pdos/xv6-riscv.git
-##### PS：
-我看的是英文版的，可以说是到目前为止看过最好的技术书，整体逻辑结构非常清楚。
-之前也看过《现代操作系统》，但从入门角度来看，却让我更加迷糊了。。。
+书籍：
+《Operating Systems: Three Easy Pieces》[线上书籍](https://pages.cs.wisc.edu/~remzi/OSTEP/)
+《Modern Operating Systems》（第四版）
+xv6代码：
+https://github.com/mit-pdos/xv6-riscv.git
+PS：
+对于新手特别推荐阅读《Operating Systems: Three Easy Pieces》英文原版

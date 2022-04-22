@@ -483,7 +483,8 @@ int __new_sem_post (sem_t *sem){
 ![](Images/thread_module.png)
 
 ### 资料
-书籍：《Operating Systems: Three Easy Pieces》
-[线上书籍](https://pages.cs.wisc.edu/~remzi/OSTEP/)
-《Modern Operating Systems》（第四版：有介绍futex，但真的只是介绍）
-glibc源码地址：http://ftp.gnu.org/gnu/glibc/
+书籍：
+《Operating Systems: Three Easy Pieces》([线上书籍](https://pages.cs.wisc.edu/~remzi/OSTEP/))
+《Modern Operating Systems》（第四版：有介绍futex,线程模型）
+glibc源码地址：
+http://ftp.gnu.org/gnu/glibc/
