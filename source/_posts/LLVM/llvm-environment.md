@@ -1,10 +1,10 @@
 ---
-title: Clang Static Analyzer环境 
+title: 【Clang Static Analyzer】环境 
 date: 2022-02-23 02:11:25
 tags:
 categories: LLVM
 ---
-# Clang Static Analyzer 安装和运行
+# 【Clang Static Analyzer】 安装和运行
 最近在利用业余时间学习和研究代码检查工具，比对了几种代码检查工具之后，决定把Clang Static Analyzer（开源+可扩展性+丰富的文档）作为学习的对象，并尝试运用到我们的项目中去。本文我们将重点围绕llvm环境搭建，并实现一个简单的static analyzer checker。
 
 ### VS中构建LLVM

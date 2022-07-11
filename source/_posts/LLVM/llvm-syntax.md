@@ -1,10 +1,10 @@
 ---
-title: Clang Static Analyzer基于AST的检查
+title: 【Clang Static Analyzer】基于AST检查
 date: 2022-04-21 07:42:33
 tags:
 categories: LLVM
 ---
-# Clang Static Analyzer 基于AST的检查
+# 【Clang Static Analyzer】 基于AST检查
 Clang Static Analyzer 的检查可以分为三种：
 1. 基于AST(abstract syntax tree)的检查
 2. 基于CFG(Control flow graph)的检查
@@ -18,7 +18,7 @@ Clang Static Analyzer 的检查可以分为三种：
 虽然用-ast-dump能清楚看到每句源码对应的AST节点，但这里还是要强调下AST的2种最基本的类型Decl和Stmt
 
 ##### 1.Decl
-Decl就是声明，比方:
+Decl是声明，比方:
 
 |语句|类型|
 |---|---|
@@ -30,7 +30,7 @@ Decl就是声明，比方:
 Decl系列的类继承图以及常用方法可以看[Decl](https://clang.llvm.org/doxygen/classclang_1_1Decl.html)
 
 ##### 2.Stmt
-Stmt就是定义（有内存分配的）、函数调用、表达式等，比方：
+Stmt是定义（有内存分配的）、函数调用、表达式等，比方：
 
 |语句|类型|
 |---|---|
@@ -41,7 +41,7 @@ Stmt就是定义（有内存分配的）、函数调用、表达式等，比方�
 Stmt系列的类继承图以及常用方法可以看[Stmt](https://clang.llvm.org/doxygen/classclang_1_1Stmt.html)
 
 ##### 3.Expr
-Expr属于Stmt的子类，比方：
+Expr是表达式，属于Stmt的子类，比方：
 
 |语句|类型|
 |---|---|
@@ -49,7 +49,8 @@ Expr属于Stmt的子类，比方：
 |char buf[1] = {0};|InitListExpr|
 |new CXXNewExpr(foo)|CXXNewExpr|
 |整数|IntegerLiteral|
-|x <= y|BinaryOperator|
+|二目运算|BinaryOperator|
+|一目操作(除了sizeof和alignof)|UnaryOperator |
 
 Expr系列的类继承图以及常用方法可以看[Expr](https://clang.llvm.org/doxygen/classclang_1_1Expr.html)
 
@@ -114,8 +115,8 @@ RecursiveASTVisitor 有三种类型的接口：
 
 如果遇到像while即属于Stmt也属于WhileStmt的，则RecursiveASTVisitor不像ConstStmtVisitor只会调用子集，而是会先调用VisitStmt，再调用一遍VisitWhileStmt
 
-### Checkers的注册函数（AST）
-这里我们暂时只关注三个跟AST相关的program point（其他program point后面唠叨）:
+### Checkers的注册回调函数（AST）
+这里我们暂时只关注三个跟AST相关的回调函数（Path-sensitive的后面唠叨）:
 1. ASTCodeBody               会回调函数体
 2. ASTDecl<\*\*\*\*>         回调\*\*\*\*Decl类型
 3. checkEndOfTranslationUnit 回调整个AST
