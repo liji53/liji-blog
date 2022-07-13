@@ -12,7 +12,7 @@ CFG由AST构建出来，用于Path-sensitive的执行(即CSA是基于CFG的节�
 而基于Exploded graph的检查是CSA的核心，涉及到相关的概念，我们需要先捋一下：
 1. Exploded graph: 可以理解为CSA分析过程中产生的数据结构，我们写Path-sensitive checker的核心工作就是往这个数据结构中添加信息。
 2. Path-sensitive: 会根据不同条件分支，跟踪程序控制流的每个分支并记录每个分支的状态，比如有2个条件分支，则会记录这两个分支的程序状态。
-3. 符号执行: 跟程序执行类似，但会探索所有可能的分支，并收集每个分支的符号变量的限制范围。
+3. 符号执行: 跟程序执行类似，但使用符号值来模拟执行（并不是实际值)，且会探索所有可能的分支，并收集每个分支的符号变量的限制范围。
 
 ### CFG
 如何使用CFG呢？其实我们只需要会遍历CFG，并能拿到相关信息即可。(毕竟很少用到)
@@ -55,7 +55,7 @@ void checkASTCodeBody(const Decl *D, AnalysisManager &mgr, BugReporter &BR) cons
 ### Path-sensitive checker回调函数
 Path-sensitive checker的核心数据结构是Exploded graph，但这个数据结构我们先缓缓，先看相关的回调函数。
 前面我们我们讲了基于AST的注册回调函数，但这些回调函数并不会参与到exploded graph的构建，一般只能做一些语法、函数禁用的检查。
-下面是一些常用的回调函数，还有一些并没有列举（因为没用过）
+下面是一些常用的Path-sensitive回调函数，还有一些并没有列举（因为没用过）
 
 ##### 1. check\:\:PreStmt\<T\> 和 check\:\:PostStmt\<T\>
 模板T可以是任意的AST Stmt类型，但实际上**条件控制语句（if等）、返回语句(return)并不会发生回调**
