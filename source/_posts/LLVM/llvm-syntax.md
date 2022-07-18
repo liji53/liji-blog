@@ -1,10 +1,27 @@
+
 ---
 title: 【Clang Static Analyzer】基于AST检查
 date: 2022-04-21 07:42:33
 tags:
 categories: LLVM
 ---
-# 【Clang Static Analyzer】 基于AST检查
+
+- [基于AST检查](#%E5%9F%BA%E4%BA%8EAST%E6%A3%80%E6%9F%A5)
+    - [AST的结构](#AST%E7%9A%84%E7%BB%93%E6%9E%84)
+        - [1.Decl](#1-Decl)
+        - [2.Stmt](#2-Stmt)
+        - [3.Expr](#3-Expr)
+    - [AST的遍历](#AST%E7%9A%84%E9%81%8D%E5%8E%86)
+        - [1. 通过ConstStmtVisitor遍历Stmt](#1-%E9%80%9A%E8%BF%87ConstStmtVisitor%E9%81%8D%E5%8E%86Stmt)
+        - [2. 通过RecursiveASTVisitor遍历](#2-%E9%80%9A%E8%BF%87RecursiveASTVisitor%E9%81%8D%E5%8E%86)
+    - [Checkers的注册回调函数(AST)](#Checkers%E7%9A%84%E6%B3%A8%E5%86%8C%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0-AST)
+        - [检查器](#%E6%A3%80%E6%9F%A5%E5%99%A8)
+    - [AST matchers](#AST-matchers)
+        - [1.通过Callback实现](#1-%E9%80%9A%E8%BF%87Callback%E5%AE%9E%E7%8E%B0)
+        - [2.更简洁的实现](#2-%E6%9B%B4%E7%AE%80%E6%B4%81%E7%9A%84%E5%AE%9E%E7%8E%B0)
+    - [参考资料与例子](#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99%E4%B8%8E%E4%BE%8B%E5%AD%90)
+
+# 基于AST检查
 Clang Static Analyzer 的检查可以分为三种：
 1. 基于AST(abstract syntax tree)的检查
 2. 基于CFG(Control flow graph)的检查
@@ -115,7 +132,7 @@ RecursiveASTVisitor 有三种类型的接口：
 
 如果遇到像while即属于Stmt也属于WhileStmt的，则RecursiveASTVisitor不像ConstStmtVisitor只会调用子集，而是会先调用VisitStmt，再调用一遍VisitWhileStmt
 
-### Checkers的注册回调函数（AST）
+### Checkers的注册回调函数(AST)
 这里我们暂时只关注三个跟AST相关的回调函数（Path-sensitive的后面唠叨）:
 1. ASTCodeBody               会回调函数体
 2. ASTDecl<\*\*\*\*>         回调\*\*\*\*Decl类型
@@ -180,7 +197,7 @@ for (const auto &Match : Matches){
 ```
 
 
-### 参考资料&例子
+### 参考资料与例子
 找了2个简单的例子，供大家阅读：
 推荐阅读[CStringSyntaxChecker](https://code.woboq.org/llvm/clang/lib/StaticAnalyzer/Checkers/CStringSyntaxChecker.cpp.html)来熟悉基于AST遍历的检查
 推荐阅读[PointerIterationChecker](https://code.woboq.org/llvm/clang/lib/StaticAnalyzer/Checkers/PointerIterationChecker.cpp.html)来熟悉AST Matchers的检查

@@ -4,16 +4,29 @@ date: 2022-05-21 10:45:01
 tags:
 categories: LLVM
 ---
-# 【Clang Static Analyzer】 Exploded Graph和内存模型
-基于Exploded Graph检查指的是结合代码执行过程中的上下文来进行检查。打个比方，我们用GDB调试的时候打断点，然后在这个断点处查看上下文，能知道当前程序的变量值、调用堆栈等信息。
+
+- [Exploded-Graph和内存模型](#Exploded-Graph%E5%92%8C%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B)
+    - [Exploded-graph](#Exploded-graph)
+        - [Program-Point](#Program-Point)
+        - [Program-State](#Program-State)
+        - [Exploded-graph图](#Exploded-graph%E5%9B%BE)
+    - [内存模型](#%E5%86%85%E5%AD%98%E6%A8%A1%E5%9E%8B)
+        - [SVal](#SVal)
+        - [MemRegion](#MemRegion)
+        - [SymExpr](#SymExpr)
+        - [三者与Exploded-graph的联系](#%E4%B8%89%E8%80%85%E4%B8%8EExploded-graph%E7%9A%84%E8%81%94%E7%B3%BB)
+    - [参考资料与例子](#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99%E4%B8%8E%E4%BE%8B%E5%AD%90)
+
+# Exploded-Graph和内存模型
+基于Exploded Graph检查指的是结合代码执行过程中的上下文来进行检查。打个比方，我们用GDB调试的时候打断点，然后在这个断点处查看上下文，能知道当前程序的变量值、调用堆栈等信息。CSA也是类似的检查过程。
 前面我们讲的Path-sensitive checker回调函数就可以理解成是程序断点，而Exploded Graph就是断点处的上下文信息，包括当前变量的值，表达式的值，符号的约束信息等。
 
-### Exploded graph
+### Exploded-graph
 Path-sensitive checker的核心数据结构是Exploded graph，Exploded graph由Exploded graph node组成，Exploded graph node包含Program Point和Program State
 如图所示：
 ![](Images/Exploded_graph_node.png)
 
-##### 1.Program Point
+##### Program-Point
 表示当前程序执行的位置。一般来说，我们写checker用到它的机会不多，往往在checkEndAnalysis(还记得一系列的回调函数把)遍历Exploded graph才用。
 **一个CFGElement往往对应一个Program Point或者多个Program Point**，下面是Program Point的部分信息：
 ```js
@@ -30,7 +43,7 @@ Path-sensitive checker的核心数据结构是Exploded graph，Exploded graph由
 ```
 详细资料[ProgramPoint](https://clang.llvm.org/doxygen/classclang_1_1ProgramPoint.html)
 
-##### 2.Program State
+##### Program-State
 Program State包含我们要检查的核心信息，包含以下内容：
  - **Environment: 表达式的符号值（注意这些符号值生命短暂）**
  - **Region Store: 表示上下文变量的符号值（如果变量后面不再用到了，会DeadSymbol，即会删除Region Store中对应的变量）**
@@ -40,7 +53,7 @@ Program State包含我们要检查的核心信息，包含以下内容：
 
 关于Region Store、Environment、Constraints里面存的是什么，后面还会继续讲，我们先清楚大概的内容即可。
 
-##### 3.Exploded graph图
+##### Exploded-graph图
 通过-cc1 -analyze -analyzer-checker="debug.ViewExplodedGraph" 可以查看相关的图，但这个图非常的大，我只能截取部分内容：
 
 ![](Images/Exploded_graph.png)
@@ -82,7 +95,7 @@ int func(){
 MemRegion是所有Region的基类，不仅**表示存储SVal的内存区域，同时也表示内存段的信息**(如代码段、堆栈段等)
 因此MemRegion分为2大类：
 - MemSpaceRegion表示内存段的信息，共有5种类型，分别对应实际程序运行时的代码段、数据段、堆、栈
-- SubRegion表示内存区域，比方变量的内存区域VarRegion。SubRegion是有内存大小的（getStaticSize），而MemSpaceRegion是没有大小的。
+- SubRegion表示内存区域，比方变量的内存区域VarRegion。SubRegion是有内存大小的，而MemSpaceRegion是没有大小的。
 
 比较常用的是SubRegion，下面列举部分常见的：
 - [VarRegion](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1VarRegion.html) 表示有内存地址的变量
@@ -122,7 +135,7 @@ SymExpr表示的是变量的符号(名字)，**在符号执行过程中并不是
 
 详情：[SymExpr](https://clang.llvm.org/doxygen/classclang_1_1ento_1_1SymExpr.html)
 
-##### 三者与Exploded graph的联系
+##### 三者与Exploded-graph的联系
 对于SVal、MemRegion、SymExpr的概念我们已经有初步的了解了，下面我们结合Exploded graph的Program State来看下他们的联系：
 
 |作用|SVal|MemRegion|SymExpr|
@@ -132,7 +145,7 @@ SymExpr表示的是变量的符号(名字)，**在符号执行过程中并不是
 |作为Region Store的value|✔|||
 |作为Environment的value|✔|||
 
-### 参考资料&例子
+### 参考资料与例子
 用到Program Point来检查可参考下面案例：
 推荐阅读[UnreachableCodeChecker](https://code.woboq.org/llvm/clang/lib/StaticAnalyzer/Checkers/UnreachableCodeChecker.cpp.html)
 

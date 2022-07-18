@@ -1,10 +1,28 @@
+
 ---
 title: 【Clang Static Analyzer】CFG和Path-sensitive checker回调函数
 date: 2022-05-14 17:12:43
 tags:
 categories: LLVM
 ---
-# 【Clang Static Analyzer】 CFG和Path-sensitive checker回调函数
+
+- [CFG和Path-sensitive checker回调函数](#CFG%E5%92%8CPath-sensitive-checker%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0)
+    - [CFG](#CFG)
+        - [1-CFG图说明](#1-CFG%E5%9B%BE%E8%AF%B4%E6%98%8E)
+        - [2-CFG的遍历](#2-CFG%E7%9A%84%E9%81%8D%E5%8E%86)
+    - [Path-sensitive checker回调函数](#Path-sensitive-checker%E5%9B%9E%E8%B0%83%E5%87%BD%E6%95%B0)
+        - [1-check\:\:PreStmt\<T\>和check\:\:PostStmt\<T\>](#1-check-PreStmt-lt-T-gt-%E5%92%8Ccheck-PostStmt-lt-T-gt)
+        - [2-check\:\:PreCall和check\:\:PostCall](#2-check-PreCall%E5%92%8Ccheck-PostCall)
+        - [3-check\:\:BranchCondition](#3-check-BranchCondition)
+        - [4-check\:\:Location和check\:\:Bind](#4-check-Location%E5%92%8Ccheck-Bind)
+        - [5-check\:\:EndAnalysis和check\:\:BeginFunction和check\:\:EndFunction](#5-check-EndAnalysis%E5%92%8Ccheck-BeginFunction%E5%92%8Ccheck-EndFunction)
+        - [6-check\:\:LiveSymbols和check\:\:DeadSymbols](#6-check-LiveSymbols%E5%92%8Ccheck-DeadSymbols)
+        - [7-eval::Assume](#7-eval-Assume)
+        - [8-eval::Call](#8-eval-Call)
+    - [参考资料与例子](#%E5%8F%82%E8%80%83%E8%B5%84%E6%96%99%E4%B8%8E%E4%BE%8B%E5%AD%90)
+
+
+# CFG和Path-sensitive-checker回调函数
 前面我们讲到CSA的检查可以基于CFG，但这种检查的实际应用场景是极少的。
 但关于CFG的概念，以及对于CFG图的理解是我们需要知道的。
 CFG由AST构建出来，用于Path-sensitive的执行(即CSA是基于CFG的节点进行模拟执行的)，一般用于配合path-sensitive checker来检查生命周期。
@@ -18,13 +36,13 @@ CFG由AST构建出来，用于Path-sensitive的执行(即CSA是基于CFG的节�
 如何使用CFG呢？其实我们只需要会遍历CFG，并能拿到相关信息即可。(毕竟很少用到)
 使用-cc1 -analyze -analyzer-checker="debug.ViewCFG"可以查看CFG图。
 
-##### 1.CFG图说明
+##### 1-CFG图说明
 CFG的图还是很容易理解的：
 ![](Images/CFG.png)
 官方[CFGBlock](https://clang.llvm.org/doxygen/classclang_1_1CFGBlock.html)详情
 官方[CFGElement](https://clang.llvm.org/doxygen/classclang_1_1CFGElement.html)详情
 
-##### 2.CFG的遍历
+##### 2-CFG的遍历
 CFG的遍历也比较简单，参考代码如下：
 ```c++
 void checkASTCodeBody(const Decl *D, AnalysisManager &mgr, BugReporter &BR) const {
@@ -52,12 +70,12 @@ void checkASTCodeBody(const Decl *D, AnalysisManager &mgr, BugReporter &BR) cons
 }
 ```
 
-### Path-sensitive checker回调函数
+### Path-sensitive-checker回调函数
 Path-sensitive checker的核心数据结构是Exploded graph，但这个数据结构我们先缓缓，先看相关的回调函数。
 前面我们我们讲了基于AST的注册回调函数，但这些回调函数并不会参与到exploded graph的构建，一般只能做一些语法、函数禁用的检查。
 下面是一些常用的Path-sensitive回调函数，还有一些并没有列举（因为没用过）
 
-##### 1. check\:\:PreStmt\<T\> 和 check\:\:PostStmt\<T\>
+##### 1-check\:\:PreStmt\<T\>和check\:\:PostStmt\<T\>
 模板T可以是任意的AST Stmt类型，但实际上**条件控制语句（if等）、返回语句(return)并不会发生回调**
 PreStmt的回调发生在“符号执行”之前，PostStmt发生在执行之后。
 因此对于PreStmt来说，如果订阅的是表达式，那么这个表达式的符号值还没计算出来。如：
@@ -80,7 +98,7 @@ void checkPreStmt(const BinaryOperator *S, CheckerContext &C) const {
 同理，对于PostStmt来说，整个表达式的符号值已经执行可以获取，但子表达式**可能在环境中已经不存在了**无法获取
 关于代码中的DefinedSVal代表的是什么，我们后面再讲。
 
-##### 2. check\:\:PreCall 和 check\:\:PostCall
+##### 2-check\:\:PreCall和check\:\:PostCall
 check\:\:PreCall的触发时机等价于check\:\:PreStmt\<CallExpr\>，
 check\:\:PostCalll的触发时机等价于check\:\:PostStmt\<CallExpr\>
 但相比PreStmt和PostStmt，PreCall、PostCalll的参数CallEvent封装了函数的相关操作，可以方便我们使用。
@@ -116,7 +134,7 @@ void checkPreCall(const CallEvent &Call, CheckerContext &C) const {
   }
 ```
 
-##### 3. check\:\:BranchCondition
+##### 3-check\:\:BranchCondition
 check\:\:BranchCondition发生在出现条件分支的情况，如if、while、for等，**还包括||和&&**
 一般用于检查条件值：
 ```c++
@@ -131,7 +149,7 @@ void checkBranchCondition(const Stmt *Condition, CheckerContext &C) const {
 }
 ```
 
-##### 4. check\:\:Location和check\:\:Bind
+##### 4-check\:\:Location和check\:\:Bind
 check\:\:Location 发生在变量发生写（不包括变量初始化的赋值）和读的时候
 check\:\:Bind 发生在变量发生写（包括变量初始化）的时候
 ```c++
@@ -147,7 +165,7 @@ int func(int i)
 }
 ```
 
-##### 5. check\:\:EndAnalysis 和 check\:\:BeginFunction 和 check\:\:EndFunction
+##### 5-check\:\:EndAnalysis和check\:\:BeginFunction和check\:\:EndFunction
 check\:\:EndAnalysis 发生在CSA完成分析一个函数体的时候，一般我们在这个时间节点遍历完整的Exploded Graph。
 check\:\:BeginFunction 发生在函数的开始，一个函数只会回调一次。
 而check\:\:EndFunction 发生在每个可能会return的分支
@@ -156,13 +174,14 @@ int func(int i)
 {
     // 这种情况，我理解的是会回调3次，但实际情况是根据return的值不同，
     // 会产生不一样的结果，目前我还不知道为什么会这样
+    // 使用check::PreStmt<ReturnStmt>能把所有可能return的都回调
     if (i == 0) { return -1; }  // 如果是负数，会回调EndFunction
     if (i == 2) { return 3; }  // 如果是非负数，不会回调EndFunction
     return 4;  // 会回调EndFunction
 }
 ```
 
-##### 6. check\:\:LiveSymbols 和 check\:\:DeadSymbols
+##### 6-check\:\:LiveSymbols和check\:\:DeadSymbols
 check\:\:DeadSymbols 发生在变量不再被使用的时候（并不是变量的生命周期结束）
 check\:\:LiveSymbols 发生在check\:\:DeadSymbols之前，一般用于把感兴趣的变量标记为InUse，这样就不会垃圾回收
 ```c++
@@ -180,7 +199,7 @@ int func(int a){
 }
 ```
 
-##### 7. eval::Assume
+##### 7-eval::Assume
 跟check\:\:BranchCondition的触发场景类似。一般用于修改ProgramState,比方删除不需要再关注的“符号变量”。如：
 ```c++
 // 来自MallocChecker的代码片段
@@ -198,10 +217,10 @@ ProgramStateRef evalAssume(ProgramStateRef state, SVal Cond, bool Assumption) co
 }
 ```
 
-##### 8. eval::Call
+##### 8-eval::Call
 这个回调函数可以让checker参与到CSA的分析过程中，但checker的开发人员需要对函数进行模拟。
 
-### 参考资料&例子
+### 参考资料与例子
 只使用CFG来检查的例子很少，可参考下面案例：
 推荐阅读[DeadStoresChecker](https://code.woboq.org/llvm/clang/lib/StaticAnalyzer/Checkers/DeadStoresChecker.cpp.html)来熟悉CFG的使用
 
