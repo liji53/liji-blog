@@ -4,13 +4,42 @@ date: 2021-06-29 15:54:28
 tags:
 categories: 操作系统
 ---
+- [并发](#%E5%B9%B6%E5%8F%91)
+    - [底层原子操作](#%E5%BA%95%E5%B1%82%E5%8E%9F%E5%AD%90%E6%93%8D%E4%BD%9C)
+        - [test-and-set](#test-and-set)
+        - [compare-and-swap](#compare-and-swap)
+        - [fetch-and-add](#fetch-and-add)
+        - [load 和 store](#load-%E5%92%8C-store)
+    - [互斥锁](#%E4%BA%92%E6%96%A5%E9%94%81)
+        - [1.自旋锁](#1-%E8%87%AA%E6%97%8B%E9%94%81)
+        - [2.nptl互斥锁的实现](#2-nptl%E4%BA%92%E6%96%A5%E9%94%81%E7%9A%84%E5%AE%9E%E7%8E%B0)
+        - [3.futex机制](#3-futex%E6%9C%BA%E5%88%B6)
+        - [4.nptl读写锁的实现](#4-nptl%E8%AF%BB%E5%86%99%E9%94%81%E7%9A%84%E5%AE%9E%E7%8E%B0)
+        - [5.提高并发性能](#5-%E6%8F%90%E9%AB%98%E5%B9%B6%E5%8F%91%E6%80%A7%E8%83%BD)
+    - [条件变量](#%E6%9D%A1%E4%BB%B6%E5%8F%98%E9%87%8F)
+        - [1.用法](#1-%E7%94%A8%E6%B3%95)
+        - [2.生产者-消费者模型](#2-%E7%94%9F%E4%BA%A7%E8%80%85-%E6%B6%88%E8%B4%B9%E8%80%85%E6%A8%A1%E5%9E%8B)
+        - [3.nptl的实现](#3-nptl%E7%9A%84%E5%AE%9E%E7%8E%B0)
+    - [信号量](#%E4%BF%A1%E5%8F%B7%E9%87%8F)
+        - [nptl中的实现](#nptl%E4%B8%AD%E7%9A%84%E5%AE%9E%E7%8E%B0)
+    - [并发问题](#%E5%B9%B6%E5%8F%91%E9%97%AE%E9%A2%98)
+        - [Non-Deadlock](#Non-Deadlock)
+        - [DeadLock](#DeadLock)
+    - [线程模型](#%E7%BA%BF%E7%A8%8B%E6%A8%A1%E5%9E%8B)
+    - [资料](#%E8%B5%84%E6%96%99)
+
 # 并发
-并发、互斥、同步在实际开发过程中经常会用到，本文将聚焦于互斥与同步，除了了解底层的互斥原理，还将重点学习glic提供的几种互斥机制。
+在现在的操作系统环境下，进程、线程是并发执行，因此不同的进程、线程之间存在着互相制约的关系，为了协调进程、线程的制约关系，于是有了同步、互斥的概念。
+先简单过一下相关的概念：
+同步：线程按照一定的先后顺序来执行
+互斥：线程不能同时访问有共享资源的代码。
+原子操作：将多个步骤合成一个操作，这个操作要么成功，要么失败。
 
 ### 底层原子操作
-原子操作：将多个步骤合成一个操作，这个操作要么成功，要么失败。
-底层原子操作由硬件提供，在阅读同步相关的源码时，会经常看到类似atomic_compare_exchange，atomic_fetch_add等类似的函数，其实这些函数就是封装了这些底层的原子操作指令。
-因此熟悉这部分原子操作对阅读理解pthread相关的代码十分重要，下面我们看下4种基本的原子操作
+我们先从底层实现开始说起，要实现临界区的互斥，即可以通过软件方法(感兴趣的可以了解下peterson算法)，也可以通过硬件方法。当然现代的软件系统基本都是靠硬件来实现的，也就是说计算机提供了特殊的机器指令。
+
+在阅读同步、互斥相关的源码时，我们会经常看到类似atomic_compare_exchange，atomic_fetch_add等类似的函数，其实这些函数就是封装了底层的原子指令。因此熟悉底层原子操作对阅读理解pthread等相关的库十分重要。
+下面我们看下4种基本的原子操作(不是真的实现，只是用代码的方式表述它的功能)
 
 ##### test-and-set
 返回旧值，设置新值
@@ -84,26 +113,26 @@ int StoreConditional(int *ptr, int value) {
 
 ### 互斥锁
 了解了硬件提供的几种原子操作之后，我们可以基于这些原子操作实现一些互斥功能。
-首先来看下mutex，但在看它的实现之前，我么需要清楚如何评估一个锁的好坏，主要从下面2方面考虑：
-1. 公平性，主要看是否可能存在“饥饿”现象
-2. 性能，从实际环境来评估：cpu是否多核，线程数，临界区的长度
+首先来看下互斥锁，但在了解它的实现之前，我们心中需要有一把尺子来衡量锁的优劣，主要从以下2方面考虑：
+1. 公平性，主要看是否可能存在“饥饿”、“饿死”现象
+2. 性能，需要结合实际环境来评估，如cpu是否多核，线程数，临界区的长度等
 
 ##### 1.自旋锁
 这个实现比较简单，利用前面的4种原子操作都能实现，如利用compare-and-swap：
 ```c
 void lock(lock_t *lock) {
-    while (CompareAndSwap(&lock->flag, 0, 1) == 1)
+    while (CompareAndSwap(lock->flag, 0, 1) == 1)
         ; // spin
 }
 ```
-下面重点看下它的优劣势：
-从公平性角度来看，可能存在饥饿现象。（除了上面基于ticket 的spin lock）
-从性能角度来看，对于单核cpu来说，采用自旋的锁，必然是浪费cpu的，参考[虚拟cpu](https://liji53.github.io/2021/06/15/operatingSystem/os-virtualization/)的进程调度
-但是对于多核的cpu来说（线程数接近cpu核数），如果临界区很短(立马就释放锁)，采用自旋锁，性能将比普通的锁更好
+而它的优劣势也比较明显：
+从公平性角度来看，无法保证先到先拿锁。
+从性能角度来看，对于单核cpu来说，采用自旋锁，必然是浪费cpu的，参考[虚拟cpu](https://liji53.github.io/2021/06/15/operatingSystem/os-virtualization/)的进程调度
+但是对于多核的cpu来说，当线程数接近cpu核数，如果临界区很短(立马就释放锁)采用自旋锁，性能将比普通的锁更好(省去了线程切换的开销)
 
 ##### 2.nptl互斥锁的实现
-自旋锁会一直占用cpu，浪费资源，如何让出cpu，让程序更高效。下面我们通过glibc的源码，来看下pthread_mutex的锁实现，
-pthread_mutex_lock的近似代码：
+自旋锁会一直占用cpu，浪费资源，如何让出cpu，让程序更高效。下面我们通过glibc的源码，来看下pthread_mutex实现，
+pthread_mutex_lock的代码(删除了部分代码)：
 ```c++
 int __pthread_mutex_lock (pthread_mutex_t *mutex){
     // 普通锁
@@ -135,7 +164,7 @@ int __pthread_mutex_lock (pthread_mutex_t *mutex){
     }
 }
 ```
-代码里清楚的展示了4种锁的上层实现策略，而最关键的LLL_MUTEX_LOCK代码，我们下面讲
+代码展示了4种锁的上层实现策略，而最关键的LLL_MUTEX_LOCK的实现，需要我们先知道futex。
 
 ##### 3.futex机制
 先简单介绍下futex，futex机制在linux2.5.7之后开始使用(fast Userspace mutexes)。
@@ -143,18 +172,18 @@ int __pthread_mutex_lock (pthread_mutex_t *mutex){
 而如果有竞争则执行系统调用futex_wait，将需要等待的进程(线程)加入到futex的等待队列中，直到通过futex_wake进行唤醒。
 futex的结构维护在内核中.它的数据结构大概如下：
 ![](Images/futex_struct.png)
-加入等待队列以及唤醒的基本接口：
+futex把线程加入等待队列以及唤醒的基本接口如下：
 ```c
-//uaddr代表futex word的地址，val代表这个地址期待的值，当*uaddr==val时，才会进行wait
+// uaddr代表futex word的地址，val代表这个地址期待的值，当*uaddr==val时，才会进行wait
 int futex_wait(int *uaddr, int val);
-//唤醒n个在uaddr指向的锁变量上挂起等待的进程
+// 唤醒n个在uaddr指向的锁变量上挂起等待的进程
 int futex_wake(int *uaddr, int n);
 ```
-因此前面pthread_mutex_lock的LLL_MUTEX_LOCK函数如下（参考lowlevellock.h）：
-```
+好了现在我们可以看LLL_MUTEX_LOCK函数的实现了（参考lowlevellock.h）：
+```c
 void LLL_MUTEX_LOCK(pthread_mutex_t *mutex){
-    // CAS原子操作，如果等于0则置为1，表示没有锁竞争
     // mutex->__data.__lock 也就是所谓的futex word
+    // 对futex word的操作需要原子操作，如果等于0则置为1，表示没有锁竞争
     if（atomic_compare_and_exchange_bool_acq(mutex->__data.__lock, 0, 1)）{
         return;
     }
@@ -211,36 +240,37 @@ ___pthread_rwlock_rdlock (pthread_rwlock_t *rwlock){
         ...
 }
 ```
-上面的代码如果理解有困难，可以参考下面读写锁各个阶段的情况：
+上面的代码如果理解有困难，可以参考源码标注的对于各种情况下读写锁的各种状态：
 ```c
-// WP 指的是读写阶段他，WL 指的是写锁， R 指的是读的线程数(也代表读锁)， RW 指的是是否有读线程在等待
-   State WP  WL  R   RW  Notes
-   ---------------------------
-   #1    0   0   0   0   Lock is idle (and in a read phase).
-   #2    0   0   >0  0   Readers have acquired the lock.    
-   #3    0   1   0   0   Lock is not acquired; a writer will try to start a
-			 write phase.                                          
-   #4    0   1   >0  0   Readers have acquired the lock; a writer is waiting
-			 and explicit hand-over to the writer is required. 
-   #4a   0   1   >0  1   Same as #4 except that there are further readers
-			 waiting because the writer is to be preferred.
-   #5    1   0   0   0   Lock is idle (and in a write phase).
-   #6    1   0   >0  0   Write phase; readers will try to start a read phase
-			 (requires explicit hand-over to all readers that
-			 do not start the read phase).
-   #7    1   1   0   0   Lock is acquired by a writer.
-   #8    1   1   >0  0   Lock acquired by a writer and readers are waiting;
-			 explicit hand-over to the readers is required.
+// WP 指的是读阶段还是写阶段，WL 指的是写锁， 
+// R 指的是读的线程数(也代表读锁)， RW 指的是是否有读线程在等待
+State WP  WL  R   RW  Notes
+---------------------------
+#1    0   0   0   0   Lock is idle (and in a read phase).
+#2    0   0   >0  0   Readers have acquired the lock.    
+#3    0   1   0   0   Lock is not acquired; a writer will try to start a
+			write phase.                                          
+#4    0   1   >0  0   Readers have acquired the lock; a writer is waiting
+			and explicit hand-over to the writer is required. 
+#4a   0   1   >0  1   Same as #4 except that there are further readers
+			waiting because the writer is to be preferred.
+#5    1   0   0   0   Lock is idle (and in a write phase).
+#6    1   0   >0  0   Write phase; readers will try to start a read phase
+			(requires explicit hand-over to all readers that
+			do not start the read phase).
+#7    1   1   0   0   Lock is acquired by a writer.
+#8    1   1   >0  0   Lock acquired by a writer and readers are waiting;
+			explicit hand-over to the readers is required.
 ```
-注意：读不占用锁，只有写才占用锁，#3，#4，#4a 这三个阶段 为wrlock加锁的情况，需要等R的个数为0，才能进行写。
+**读不占用锁，只有写才占用锁，#3，#4，#4a 这三个阶段 为wrlock加锁的情况，需要等R的个数为0，才能进行写。**
 关于读写锁饿死的情况, 在rdlock源码中并没有看到处理，因此如果写频繁，请不要使用读写锁。
-引用一句话“Big and dumb is better”，不要过分追求像读写锁这种听起来炫酷，但使用复杂的玩意。
+最后引用一句话“Big and dumb is better”，无特殊情况，使用普通的锁就可以了。
 
 ##### 5.提高并发性能
 这里仅指优化锁的开销，从而提高并发性能
-从前面的futex机制，我们知道如果出现锁冲突，就会有进程(线程)切换的开销(上下文切换、进程调度)，因此如何优化锁，核心在于减少锁的冲突：
-1. 减少锁的持有时间，在锁的过程中不要使用会阻塞的接口，从时间颗粒度的角度考虑。
-2. 减少锁的空间颗粒度，将临界数据打散，每个分散后的临界数据各使用一把锁，代替全局的锁。因为数据分散之后，访问某一个数据的概率就减少了，锁冲突也就减少了。
+从前面的futex机制中，我们知道如果出现锁冲突，就会有进程(线程)切换的开销(上下文切换、进程调度)，因此如何优化锁，核心在于如何减少锁的冲突：
+1. 减少锁的持有时间，**在锁的过程中不要使用会阻塞的接口**，从时间颗粒度的角度考虑。
+2. 减少锁的空间颗粒度，**将临界数据打散，每个分散后的临界数据各使用一把锁，代替全局的锁**。因为数据分散之后，访问某一个数据的概率就减少了，锁冲突也就减少了。
 3. 避免使用锁,使用线程本地存储(比方TLS)。思路就是把临界数据变成线程局部数据，一段时间之后再更新回临界数据中。
 4. 在读操作频繁，写操作少的数据结构中，使用读写锁;在临界区短，冲突频繁的场景中使用自旋锁。
 5. 放弃用锁，使用wait-free的思路，比方使用无锁的数据结构。
@@ -282,9 +312,9 @@ void update(counter_t *c, int threadID, int amt) {
 ```
 
 ### 条件变量
-条件变量用于线程的同步，保证线程的执行先后顺序
+条件变量用于线程的同步，保证线程的先后执行顺序
 ##### 1.用法
-条件变量的使用虽然容易犯错，但它的套路其实比较固定的：
+条件变量的使用虽然容易犯错，但它的套路其实比较固定：
 ```c
 // 场景：A线程先执行，再执行B线程
 // A线程：
@@ -293,15 +323,15 @@ Pthread_mutex_lock(&m);
 Pthread_cond_signal(&c);
 Pthread_mutex_unlock(&m);
 // B线程：
-Pthread_mutex_lock(&mutex); // p1
-while (条件不满足) // p2
-    Pthread_cond_wait(&cond, &mutex); // p3
-Pthread_mutex_unlock(&mutex); // p6
+Pthread_mutex_lock(&mutex); 
+while (条件不满足) 
+    Pthread_cond_wait(&cond, &mutex);
+Pthread_mutex_unlock(&mutex); 
 ```
 常见的错误就是：
-1. 没有和锁一起配合使用，或者锁顺序有问题，牢记条件变量要传锁的原因：即Pthread_cond_wait内部实现： 1.先释放锁，2.加入等待队列，3.唤醒之后再加锁
-2. Pthread_cond_wait在等待条件满足时，不用while 而用if， Pthread_cond_wait可能存在虚假唤醒(被信号中断唤醒);也有可能同时唤醒2个线程，但另一个线程执行很快，又把值改回去了(ABA问题)
-3. 该使用2个条件变量，却只使用了一个条件变量，参考下面的消费者-生产者的错误模型：
+1. 没有和锁一起配合使用，或者锁顺序有问题，牢记条件变量要传锁的原因，即**Pthread_cond_wait内部实现： 1.先释放锁，2.加入等待队列，3.唤醒之后再加锁**
+2. Pthread_cond_wait**在等待条件满足时，要用while 不要用if**， Pthread_cond_wait可能存在虚假唤醒(被信号中断唤醒);也有可能同时唤醒2个线程，但另一个线程执行很快，又把值改回去了(ABA)
+3. 该使用2个条件变量，却只使用了一个条件变量，参考下面的消费者-生产者的错误案例：
 ```c
 pthread__cond_t cond;
 pthread__mutex_t mutex;
@@ -328,11 +358,12 @@ void *consumer(void *arg) {
     }
 }
 ```
-这一段代码，如果只有1个消费者和1个生产者似乎没什么问题，但如果consumer(消费者)的线程数是2个就有问题了。
+这一段代码，如果只有1个消费者和1个生产者没有问题，但如果consumer(消费者)的线程数是2个就有问题了。
 错误原因：如果consumer1 发出signal ，但唤醒的不是producer，而是consumer2，consumer2由于条件不满足，又睡眠了（并没有发signal），这时候三个线程就将永远睡眠。
 
 ##### 2.生产者-消费者模型
-正确的代码如下：
+作为线程同步的最经典的例子，其实真的有必要再三review。
+该模型正确的代码如下：
 ```c
 cond_t empty, fill;
 mutex_t mutex;
@@ -361,7 +392,7 @@ void *consumer(void *arg) {
 ```
 
 ##### 3.nptl的实现
-pthread_cond_wait的源码（来自glibc-2.35）
+pthread_cond_wait的实现（来自glibc-2.35）
 ```c
 int __pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex){
     ...
@@ -423,7 +454,7 @@ pthread_cond_wait(cond_t* t, mutex_t* m){
     lock(m);
 }
 pthread_cond_signal(cond_t* t){
-    atmoic_ftech_and_add(t->futex_signal，1);  // signal 加1
+    atmoic_ftech_and_add(t->futex_signal，1);  // signal 原子加1
     futex_wake(t->futex_var, 1);  // 唤醒一个等待者
 }
 ```
@@ -446,16 +477,18 @@ int __new_sem_post (sem_t *sem){
         futex_wake (&isem->value, 1, private);
 }
 ```
-信号量的源码比读写锁、条件变量好理解多了。
-将这些代码当作lock-free编程去学习，你再去网上的其他lock-free的数据结构也会轻松不少。
+信号量的源码实现比读写锁、条件变量好理解多了，其实基本上就是对futex封装了一下。
 
 ### 并发问题
-##### Non-Deadlock
-在实际软件项目中，非死锁导致的问题可能比死锁导致的问题更多，下面我们看看常见的两种非死锁并发问题：
-1. 违背原子性：简单来说就是对于临界数据没有加锁
-2. 违背执行顺序：在多线程中由于执行顺序不正确导致的问题，通过条件变量、信号量 来保证同步就可以解决
+在多线程项目的开发过程中，我们首先要确认有哪些线程、这些线程的执行顺序是怎么样的、哪些是临界资源，然后才能通过互斥、同步来解决这些问题。
+很多人可能错误的认为并发问题是指死锁问题，但其实在实际软件项目中，没有考虑前者导致的问题(非死锁导致的问题)比死锁导致的问题更多。
 
-这类问题看起来很简单，但如果项目工程很大，在处理这些问题时，你需要对代码有较深入的理解才能解决。
+##### Non-Deadlock
+下面我们看看，因为我们的不重视而导致的常见的两种非死锁并发问题：
+1. 违背原子性：简单来说就是对于临界数据没有加锁
+2. 违背执行顺序：在多线程中由于执行顺序不正确导致的问题，需要通过条件变量、信号量来保证同步
+
+这类问题看起来很简单，但解决起来却非常困难，因为不像死锁，你能肉眼看到问题发生，而这类问题你需要对代码很深入的理解才能解决。同时这类问题还具有很强的隐藏性，偶然性。
 
 ##### DeadLock
 死锁产生的条件与解决方案：
@@ -466,21 +499,21 @@ int __new_sem_post (sem_t *sem){
 3. 不可剥夺：进程所获得的资源在未使用完毕之前，不被其他进程强行剥夺，而只能由获得该资源的进程资源释放。
    解决（可读性差，异常处理复杂）：使用trylock，尝试获取锁，如果获取锁失败，则释放已经占用的锁，从而让其他进程能获取锁，但释放锁的时候需要考虑资源释放与重新申请的问题。
 4. 循环等待：比方A进程占用a锁，同时请求b锁，B进程占用b锁，请求a锁，导致AB进程互相等待
-   解决（最常用的方法）：保持获取锁的顺序一致。
+   解决（比较常用的方法）：保持获取锁的顺序一致性。
    
-看完死锁的原因以及解决方案之后，并不能杜绝死锁的产生，究其原因，还是软件的复杂度导致的。
-一般在软件设计中，组件之间的互相依赖、接口的封装 才是导致死锁的根本原因。
-因此适当的接口使用说明、代码评审、测试覆盖以及代码漏洞检测，在提升软件质量上尤为关键
+介绍完死锁的原因以及解决方案之后，我们还是不能杜绝死锁的产生，究其原因，一是因为软件的复杂度很高(组件之间的互相依赖、接口的封装等)，二是所谓的解决方案无法通过技术手段实现。
+因此从死锁预防的角度来看：
+1. 要从提升软件质量上下手，比如适当的接口使用说明、代码评审、测试覆盖以及代码漏洞检测等。
+2. 降低软件复杂度，及时对耦合度高、难以理解的模块进行重构。
 
 ### 线程模型
-最后，我们简单看下进程与线程的区别：
-进程是资源分配的基本单位，线程是CPU调度的基本单位。线程有独立的线程栈、寄存器。
-
-在《Modern Operating Systems》中提到的线程模型：
-在linux中pthread库中采用的是1对1的线程模型，即一个用户对应一个内核线程，内核负责每个线程的调度。
-但这种一对一的模型存在用户态、内核态切换频繁的问题。
-因此为提升效率，由用户实现支持多对一的定时器模型，能提高一定的效率，但这种模型调度的任务不能阻塞，否则会导致其他任务也不能执行。（之前在某公司做嵌入式开发时，就遇到过这个问题）
+下面我们了解下在《Modern Operating Systems》中提到的线程模型：
 ![](Images/thread_module.png)
+在linux的pthread库中采用的是1对1的线程模型，即一个用户对应一个内核线程，内核负责每个线程的调度，这种一对一的模型存在用户态/内核态切换频繁的问题。
+因此为提升效率，由用户层实现支持多对一的定时器模型，能提高一定的效率，但这种模型调度的任务不能阻塞，否则会导致其他任务也不能执行。
+
+最后，我们简单总结下进程与线程的区别：
+进程是资源分配(除cpu)的基本单位，线程是CPU调度的基本单位。线程有独立的线程栈、寄存器。
 
 ### 资料
 书籍：
