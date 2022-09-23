@@ -1,293 +1,170 @@
+
 ---
-title: 花最小的学习成本部署web服务
+title: 花最小的学习成本实现web UI
 date: 2021-07-05 11:51:02
 tags:
+categories: 工具人
 ---
 
-# 用httpd给程序搭个web界面
+- [给程序搭个web界面](#%E7%BB%99%E7%A8%8B%E5%BA%8F%E6%90%AD%E4%B8%AAweb%E7%95%8C%E9%9D%A2)
+    - [预备知识](#%E9%A2%84%E5%A4%87%E7%9F%A5%E8%AF%86)
+    - [总体思路](#%E6%80%BB%E4%BD%93%E6%80%9D%E8%B7%AF)
+        - [1.整体思路](#1-%E6%95%B4%E4%BD%93%E6%80%9D%E8%B7%AF)
+        - [2.面临的困难](#2-%E9%9D%A2%E4%B8%B4%E7%9A%84%E5%9B%B0%E9%9A%BE)
+        - [3.前端框架的选择](#3-%E5%89%8D%E7%AB%AF%E6%A1%86%E6%9E%B6%E7%9A%84%E9%80%89%E6%8B%A9)
+    - [实现过程](#%E5%AE%9E%E7%8E%B0%E8%BF%87%E7%A8%8B)
+        - [1.快速搞定布局问题](#1-%E5%BF%AB%E9%80%9F%E6%90%9E%E5%AE%9A%E5%B8%83%E5%B1%80%E9%97%AE%E9%A2%98)
+        - [2.数据与组件绑定](#2-%E6%95%B0%E6%8D%AE%E4%B8%8E%E7%BB%84%E4%BB%B6%E7%BB%91%E5%AE%9A)
+        - [3.动态页面渲染](#3-%E5%8A%A8%E6%80%81%E9%A1%B5%E9%9D%A2%E6%B8%B2%E6%9F%93)
+        - [4.协议交互](#4-%E5%8D%8F%E8%AE%AE%E4%BA%A4%E4%BA%92)
+        - [5.事件响应](#5-%E4%BA%8B%E4%BB%B6%E5%93%8D%E5%BA%94)
+    - [总结](#%E6%80%BB%E7%BB%93)
 
-当你写完程序，需要做推广时，必不可少的需要有个界面。基于这么一个简单背景，花了5天的时间，给自己的程序搞了个web界面，由于之前没有web的实战经验，又不能花大量精力在学习web上，因此有了这篇学习记录
+
+# 给程序搭个web界面
+作为一名合格的工具人，通过web界面/客户端来组织管理你写的工具是必不可少的技能，否则你的工具是不可能得到其他同事的认同的。
+但我们毕竟不是专门搞前端的，因此有了这篇学习记录，以备下次再遇到这种事情能快速响应。
 
 ### 预备知识
-
-主要储备知识还是在前端这块：
-
-1. 了解html、css、js，html和js可以在实际过程中边学边用
-2. 了解http协议，主要是出问题的时候，可以抓包快速确定是前端还是后端的问题
-3. 了解httpd、cgi，主要是要部署web服务器，以及写后端脚本
+这一次我们主要聊聊前端的预备知识，而C端和服务端下次再聊：
+1. 了解html、css、js，其中html和js可以在实际开发过程中边学边用
+2. 了解[vue](https://cn.vuejs.org/guide/introduction.html)，我觉得只需要知道"模板语法"就可以上手了，后面一样边学边用
+3. 了解[element](https://element.eleme.cn/#/zh-CN/component/layout)，文档非常的丰富，用到哪个组件就去看对应的文档即可
+4. 了解http协议，主要是出问题的时候，可以抓包快速确定是前端还是后端的问题
 
 ### 总体思路
+搭建web这件事，在现在这家公司我搞了2次，第一次是我们工具人刚起步的时候，第二次则是1年半之后对第一次的推翻重构。
 
-##### 1.明确web做什么
+##### 1.整体思路
+虽然玩了2次，但整体思路是一致的：
+1. 先确定要做成什么样子，然后从网上找一个静态页面模板 
+2. 确定前后端的交互协议,确定动态数据
+3. 结合数据，将这个静态页面改造成动态页面
+4. 部署服务器，实现后端脚本
 
-既然是花最小的学习成本部署web服务，那就需要清楚页面要做什么事，然后针对性的去学习。例如我这次web要做的是读写后台的配置文件。理想的服务端目录结构是这样的：
+##### 2.面临的困难
+但对于一个前端或C端的小白来说，我相信我们面临的困难是一样的：
+1. 页面的布局问题(大到整个页面的布局，小到一行、一列的布局)
+2. 组件的样式问题(看见CSS就痛疼)
+3. 数据与页面绑定的问题(数据与界面该如何分离)
+4. 组件的事件响应(第一玩的时候，我居然把导航栏的切换给实现了)
+5. 前后端的通信问题
 
-```json
-{
-    "系统1":{
-        "子系统1":{
-            "业务1":"配置文件1",
-            "业务2":"配置文件2"
-        }
-    }
-}
-```
+##### 3.前端框架的选择
+对于前面的这些小白问题，如果你用原始的html+css+js来开发，会异常的艰苦。
+像我第一次采用了bootstrap来实现，当时为了实现数据与UI的绑定，写了大量的if-else，而如果想要简单的扩展一个功能，往往要花上1天时间。
+因为我没有前端的知识基础，我的页面是从[bootstrap的官网](https://getbootstrap.com/docs/5.0/getting-started/download/)找来的模板来实现的。
+这虽然节省了一些时间，但后面很难扩展。
+而第二次开发则采用Vue+element来开发，简单来说这就是目前最流行的前端框架之一，换了一种框架之后，像上述的困难点2、3 基本不用考虑了。
 
-web要修改的就是“配置文件1，配置文件2”。基于这个结构，web页面需要3层导航，分别表示 “系统”、‘’子系统“、“业务”，还需要一个能显示配置，同时能修改配置的地方。
+### 实现过程
+##### 1.快速搞定布局问题
+由于我们不熟悉也不打算学习传统的\<div\> 等html标签，因此我们可以通过[拖拽生成web UI](https://vcc3.sahadev.tech/)。有了这个玩意之后，我就可以任意的搭建我们的UI了。
+通过拖拽，轻松搭建完成下面的静态网页：
+![](Images/vcc3_web.png)
+当然玩过几次之后，你会发现这玩意也挺不好用的，它仅仅用来帮你搭建大致的代码框架。
 
-##### 2.找一个静态web页面模板
-
-找静态的web页面是为了让我们后续动态生成html有参考模板，同时网上的web页面会比自己从零开始写的要好看，不需要自己搞CSS。
-
-##### 3.部署服务器
-
-这里采用httpd作为服务器，使用cgi进行交互。httpd部署过程忽略(建议直接用docker)
-
-##### 4.确定交互协议
-
-找到合适的模板，部署好服务之后，就要考虑如何与服务器交互了，一般采用http协议，交互的数据格式为json。具体协议设计忽略
-
-##### 5.动态生成html页面
-
-这里主要是通过ajax来动态更新页面。
-
-### 找静态web页面模板
-
-我的情况比较简单，只要能体现3层导航的web页面即可，可以从官网的demo中找
-
-地址：https://getbootstrap.com/docs/5.0/getting-started/download/
-
-其他专业模板(太高端，没玩过)：https://www.w3cschool.cn/msv2es/qmaj1pyd.html
-
-由于我没有经验，找了1个小时才找到合适的模板，模板长这样：
-
-![](Images\static_web.png)
-
-接着去掉内容，只留下html骨架代码。可以看到三个地方留了id属性，用于后续动态生成html
-
+##### 2.数据与组件绑定
+在搭建完页面的框架之后，我们用到的组件还是默认的格式与数据，下面我们需要通过[element](https://element.eleme.cn/#/zh-CN/component/layout)的官方文档，找到对应组件的用法。
+比如输入框组件与数据的绑定:
 ```html
-<!-- 最上面的导航 -->
-<div class="navbar navbar-fixed-top">
-    <div class="navbar-inner">
-        <div class="container-fluid">
-            <!-- id后面动态生成的时候用到 -->
-            <div class="nav-collapse" id='header_system'></div>
-        </div>
-    </div>
-</div>
-<div class="container-fluid">
-    <div class="row-fluid">
-        <!-- 左边的导航栏 -->
-        <div class="span3">
-            <div class="well sidebar-nav" id='left_config'></div>
-        </div>
-        <!-- 右边配置展示 -->
-        <div class="span7">
-            <div style="padding: 10px 10px 10px;" id='right_config'></div>
-        </div>
-    </div>
-</div>
+<!-- 来自element官网的例子 -->
+<el-input
+  placeholder="请输入内容"
+  v-model="input"
+  clearable>
+</el-input>
+
+<script>
+  export default {
+    data() {
+      return {
+        input: ''
+      }
+    }
+  }
+</script>
 ```
 
-### 部署服务
+这里的v-model指令就是用于实现双向数据绑定的。
+知道这个功能之后，我们就可以开始设计我们的数据结构了，因为不同的组件要求绑定的数据格式可能是不一样的，比如能多选的组件可能要求数组格式。
 
-下载httpd的镜像，启动容器，命令如下：
-
-```shell
-docker pull centos/httpd
-docker run --name=myHttpd -it -p 192.168.0.1:8089:80 \
-  -v /home/liji/apache/html:/var/www/html/ \
-  -v /home/liji/apache/cgi-bin:/var/www/cgi-bin/ \
-  -v /home/liji/apache/conf:/etc/httpd/conf  \
-  centos/httpd
-```
-
-修改httpd.conf，前面已经做好路径映射，直接修改/home/liji/apache/conf/httpd.conf
-
-```xml
-<Directory "/var/www/cgi-bin">
-    AllowOverride None
-    SetHandler  cgi-script
-    Options  ExecCGI
-    Require all granted
-</Directory>
-```
-
-重启httpd容器
-
-```
-docker restart myHttpd
-```
-
-cgi脚本可以用shell，也可以用python， 如果用python则还需要在容器内安装python，可以参考上一篇博客
-
-### 测试CGI
-
-在html中随便加个能发请求的button，用于测试
-
+##### 3.动态页面渲染
+接下来，我们希望通过后端返回的数据来动态展示web的界面，同样通过Vue的指令，我们就可以实现对组件的展示做动态处理，如：
 ```html
-<button type="button" onclick="cgiHttp('test')">测试CGI</button>
-```
+<!-- 自己瞎写的例子 -->
+<template v-for="item in business">
+    <template v-if='item["value"].length >= 6'>
+        <el-input type="textarea" v-model='item["value"]' :disabled='!item["is_enable"]'>
+        </el-input>
+    <template v-else>
+        <el-input v-model='item["value"]' :disabled='!item["is_enable"]'>
+        </el-input>
+</template
 
-js发送请求代码如下：
-
-```javascript
-function cgiHttp(func){
-    url = window.location.href + 'cgi-bin/' + func + '.cgi&arg=test' 
-    var request = new XMLHttpRequest()
-    request.onreadystatechange = function() {
-        if (request.readyState==4 && request.status==200){
-             alert(request.responseText)
-        }
+<script>
+  export default {
+    data() {
+      return {
+        business: [
+          {
+            is_enable: false,
+            value: "随手写6个字",
+          },
+          {
+            is_enable: true,
+            value: "2字",
+          },
+        ]
+      }
     }
-    request.open("GET", url, true)
-    request.send(null)
+  }
+</script>
+```
+这个例子，通过后端返回的business数据，动态的展示成多个input输入框，而且还可以根据数据的长度动态决定input还是textarea输入框。
+
+##### 4.协议交互
+结合前面UI展示所要用到的数据，我们现在需要从服务器取数据，这里推荐使用axios来完成请求。
+```js
+const app = {
+  data() {
+    return {
+      language: null,
+    }
+  },
+  mounted () {
+    axios
+      .get('/cgi-bin/test/loadLanguage.cgi')
+      .then((response) => {
+        this.language = response.data
+      })
+      .catch(function (error) { // 请求失败处理
+        console.log(error);
+      });
+  }
 }
+Vue.createApp(app).use(ElementPlus).mount("#app");
 ```
+这里会出现的问题可能就比较多了，比如http协议中"Content-type"设置不正确，表单数据可能要用 window.Qs.stringify(params)格式化等等
 
-web服务端，在/home/liji/apache/cgi-bin目录下新建test.cgi，内容如下：
-
-```python
-import cgi, cgitb
-import json
-form = cgi.FieldStorage()
-# 获取数据
-site_arg = form.getvalue('arg')
-print("Content-type:text/html")
-print()
-print("cgi test success! arg = %s" % site_arg)
-```
-
-遇到问题的时候首先抓包，如果返回的是500内部服务错误，直接到/etc/httpd/logs/目录下，查看error_log文件
-
-典型的3种错误有：
-
-**1.权限问题**
-
-```shell
-(13)Permission denied: exec of '/var/www/cgi-bin/test.cgi' failed
-```
-
-这种可能是test.cgi 没有执行权限，chmod +x  test.cgi 解决
-
-如果你写的cgi脚本需要修改其他目录下的文件，则还需要修改相应目录的权限，参考命令 chown -R apache:apache  /home/test
-
-**2.执行失败**
-
-```shell
-(2)No such file or directory: exec of '/var/www/cgi-bin/previousPick.cgi' failed
-```
-
-检查test.cgi 是否存在**windows字符**，这个问题我当时花了半小时才找到。vi -b test.cgi，进入文件看有没有 ^M 字符 
-
-**3.字符编码**
-
-```shell
-UnicodeEncodeError: 'ascii' codec can't encode characters in position 4-9: ordinal not in range(128)
-```
-
-这个问题比较恶心，在实际的环境中，脚本需要修改其他目录下的配置文件，而这个目录存在中文，就会报错。我用的是python3.6版本，直接运行脚本不会出错，但用apache用户运行就有问题，即使我在httpd.conf中加入环境变量**SetEnv PYTHONIOENCODING utf-8**依然没有解决，最后只能不用中文的目录来规避
-
-### 协议交互
-
-假设现在设计了4个协议，对应服务端有4个脚本，分别是getSystem.cgi、getBusiness.cgi、getConfig.cgi、setConfig.cgi，js代码如下：
-
-```javascript
-/// 根据协议的设计，拼装http请求，为了展示效果不冗余，只拼装1个协议
-function _get_url(func){
-    url = window.location.href + 'cgi-bin/' + func + '.cgi'
-	if(func == 'getSystem'){
-        url += ("?system=" + g_system)
-    }else{
-        alert("功能尚未实现，敬请期待！")
-        return null
-    }
-    return url
-}
-function cgiHttp(func){
-    url = _get_url(func) 
-    if (url == null){
-        return
-    }
-    var request = new XMLHttpRequest()
-    request.onreadystatechange = function() {
-        if (request.readyState==4 && request.status==200){
-            response_config = JSON.parse(request.responseText)
-            /// 动态加载html页面
-            load_func = '_load' + func + 'Response(response_config)'
-            eval(load_func)
-        }
-    }
-    request.open("GET", url, true)
-    request.send(null)
-}
-```
-
-### 动态更新页面
-
-根据前面的协议交互，我们已经能收到服务器的响应了，下面就是拼装html。先确定我们的目标长什么样：
-
+##### 5.事件响应
+组件的事件响应，还是一样通过[vue](https://cn.vuejs.org/guide/essentials/event-handling.html#listening-to-events)以及[element](https://element.eleme.cn/#/zh-CN/component/layout)的文档来确定。
 ```html
-<div class="nav-collapse" id="header_system">
-    <ul class="nav">
-        <li class="active" id="system_system1">
-            <a onclick="systemClick('system1')">system1</a></li>
-        <li class="disabled" id="system_system2">
-        	<a onclick="systemClick('system2')">system2</a></li>
-        <li class="disabled" id="system_system3">
-            <a onclick="systemClick('system3')">system3</a></li>
-    </ul>
-    <p class="navbar-text pull-right">contract  liji37951</p>
-</div>
-```
-
-重点是class="active" 、 id="system_system1"、systemClick('system1') 这几个字段是动态的。
-
-```javascript
-function _loadgetSystemResponse(systemConfig){
-    headerInnerHtml = '<ul class="nav">'
-    for (var i = 0; i < systemConfig.length; i++){
-        if (i == 0){ 
-            headerInnerHtml += '<li class="active"'
-            g_system = systemConfig[i]
-        }else{
-            headerInnerHtml += '<li class="disabled"'
-        }
-        headerInnerHtml += ' id="system_' + systemConfig[i]
-                        + '"><a onclick="systemClick(\'' 
-                        + systemConfig[i] + '\')">' 
-                        + _toChinese(systemConfig[i])+'</a></li>'
+<el-button @click="open">点击</el-button>
+<script>
+  export default {
+    methods: {
+      open() {
+        this.$message('这是一条消息提示');
+      },
     }
-    headerInnerHtml += '</ul><p class="navbar-text pull-right">contract liji</p>'
-    document.getElementById("header_system").innerHTML=headerInnerHtml
-}
+  }
+</script>
 ```
-
-下面就是实现systemClick这个函数。
-
-```javascript
-function systemClick(system){
-    if (document.getElementById("system_"+system).className == 'disabled'){
-        document.getElementById("system_"+g_system).className='disabled'
-        g_system = system
-        document.getElementById("system_"+system).className='active'
-        cgiHttp('getBusiness', g_system)
-        cgiHttp('getConfig', g_business)
-    }
-}
-```
-
-其他左边的导航栏，右边的配置内容， 方法是一致的。
+这部分不难，但有时候也会遇到奇葩问题，比如用Cascader组件，通过blur事件来实现自动保存数据的功能，但直到最后也没解决。
 
 ### 总结
-
-这篇文章，无法直接拷贝代码，帮你完成web的搭建。但我写这篇文章，是为了下次遇到类似问题时提供一个思路，这次花5天时间搞定，下次能2天时间搞定，这就是这篇文章的价值。
-
-
-
-
-
-
-
-
+最后贴一张最终的效果图：
+![](Images\vue_web.png)
+我想，界面的好差可能关乎到领导对你做的事情的初步印象，而通过Vue+element应该能做到高端的视觉体验，而且开发成本不大。
 
